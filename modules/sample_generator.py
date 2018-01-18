@@ -71,6 +71,8 @@ class SampleGenerator():
             m = int(2*np.sqrt(n))
             xy = np.dstack(np.meshgrid(np.linspace(0,1,m),np.linspace(0,1,m))).reshape(-1,2)
             xy = np.random.permutation(xy)[:n]
+
+            # x,y of samples is like grid from bb[2:]/2 to self.img_size-bb[2:]/2-1
             samples[:,:2] = bb[2:]/2 + xy * (self.img_size-bb[2:]/2-1)
             #samples[:,:2] = bb[2:]/2 + np.random.rand(n,2) * (self.img_size-bb[2:]/2-1)
             samples[:,2:] *= self.scale_f ** (np.random.rand(n,1)*2-1)

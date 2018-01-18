@@ -48,13 +48,17 @@ def set_optimizer(model, lr_base, lr_mult=opts['lr_mult'], momentum=opts['moment
             if k.startswith(l):
                 lr = lr_base * m
         param_list.append({'params': [p], 'lr':lr})
-    optimizer = optim.SGD(param_list, lr = lr, momentum=momentum, weight_decay=w_decay)
+    optimizer = optim.SGD(param_list, lr = lr, momentum=momentum, weight_decay=w_decay) # TODO:NUSTD
     return optimizer
 
 
 def train(model, criterion, optimizer, pos_feats, neg_feats, maxiter, in_layer='fc4'):
     model.train()
-    
+
+    # opts['batch_pos'] = 32
+    # opts['batch_neg'] = 96
+    # opts['batch_neg_cand'] = 1024
+    # opts['batch_test'] = 256
     batch_pos = opts['batch_pos']
     batch_neg = opts['batch_neg']
     batch_test = opts['batch_test']
@@ -120,8 +124,14 @@ def run_mdnet(img_list, init_bbox, gt=None, savefig_dir='', display=False):
 
     # Init bbox
     target_bbox = np.array(init_bbox)
+
+    # best candidates in samples for each img
     result = np.zeros((len(img_list),4))
+
+    # results after bbregression for each img
     result_bb = np.zeros((len(img_list),4))
+
+    # result list init: result_bb[0] = target_bbox = gt[0]
     result[0] = target_bbox
     result_bb[0] = target_bbox
 
@@ -129,6 +139,7 @@ def run_mdnet(img_list, init_bbox, gt=None, savefig_dir='', display=False):
     model = MDNet(opts['model_path'])
     if opts['use_gpu']:
         model = model.cuda()
+    # set p.requires_grad = True for all fc layers parameters and False for others
     model.set_learnable_params(opts['ft_layers'])
     
     # Init criterion and optimizer 
@@ -141,19 +152,28 @@ def run_mdnet(img_list, init_bbox, gt=None, savefig_dir='', display=False):
     image = Image.open(img_list[0]).convert('RGB')
     
     # Train bbox regressor
+    # trans_f 0.3 scale_f 1.5 aspect_f 1.1
+    # n 1000 overlap [0.6, 1] scale [1, 2]
     bbreg_examples = gen_samples(SampleGenerator('uniform', image.size, 0.3, 1.5, 1.1),
                                  target_bbox, opts['n_bbreg'], opts['overlap_bbreg'], opts['scale_bbreg'])
+    # out_layer = 'conv3'
     bbreg_feats = forward_samples(model, image, bbreg_examples)
     bbreg = BBRegressor(image.size)
     bbreg.train(bbreg_feats, bbreg_examples, target_bbox)
 
     # Draw pos/neg samples
+    # trans_f 0.1 scale_f 1.2 no aspect ratio change
+    # n 500 overlap [0.7, 1] no scale limitation
     pos_examples = gen_samples(SampleGenerator('gaussian', image.size, 0.1, 1.2),
                                target_bbox, opts['n_pos_init'], opts['overlap_pos_init'])
 
     neg_examples = np.concatenate([
+                    # trans_f 1 scale_f 2 aspect_f 1.1
+                    # n 5000//2 overlap [0, 0.5] no scale limitation
                     gen_samples(SampleGenerator('uniform', image.size, 1, 2, 1.1), 
                                 target_bbox, opts['n_neg_init']//2, opts['overlap_neg_init']),
+                    # trans_f 0 scale_f 1.2 aspect_f 1.1
+                    # n 5000//2 overlap [0, 0.5] no scale limitation
                     gen_samples(SampleGenerator('whole', image.size, 0, 1.2, 1.1),
                                 target_bbox, opts['n_neg_init']//2, opts['overlap_neg_init'])])
     neg_examples = np.random.permutation(neg_examples)
@@ -164,14 +184,23 @@ def run_mdnet(img_list, init_bbox, gt=None, savefig_dir='', display=False):
     feat_dim = pos_feats.size(-1)
 
     # Initial training
+    # opts['maxiter_update'] = 15
     train(model, criterion, init_optimizer, pos_feats, neg_feats, opts['maxiter_init'])
     
     # Init sample generators
+    # opts['trans_f'] = 0.6
+    # opts['scale_f'] = 1.05
+
+    # trans_f 0.6 scale_f 1.05 no aspect ratio change
     sample_generator = SampleGenerator('gaussian', image.size, opts['trans_f'], opts['scale_f'], valid=True)
+    # trans_f 0.1 scale_f 1.2 no aspect ratio change
     pos_generator = SampleGenerator('gaussian', image.size, 0.1, 1.2)
+    # trans_f 1.5 scale_f 1.2 no aspect ratio change
     neg_generator = SampleGenerator('uniform', image.size, 1.5, 1.2)
 
     # Init pos/neg features for update
+    # opts['n_pos_update'] = 50
+    # opts['n_neg_update'] = 200
     pos_feats_all = [pos_feats[:opts['n_pos_update']]]
     neg_feats_all = [neg_feats[:opts['n_neg_update']]]
     
@@ -212,19 +241,22 @@ def run_mdnet(img_list, init_bbox, gt=None, savefig_dir='', display=False):
         image = Image.open(img_list[i]).convert('RGB')
 
         # Estimate target bbox
+        # opts['n_samples'] = 256
+        # n 256 no overlap and scale limitation
         samples = gen_samples(sample_generator, target_bbox, opts['n_samples'])
         sample_scores = forward_samples(model, image, samples, out_layer='fc6')
         top_scores, top_idx = sample_scores[:,1].topk(5)
         top_idx = top_idx.cpu().numpy()
         target_score = top_scores.mean()
         target_bbox = samples[top_idx].mean(axis=0)
-
+        # opts['success_thr'] = 0
         success = target_score > opts['success_thr']
         
         # Expand search area at failure
         if success:
             sample_generator.set_trans_f(opts['trans_f'])
         else:
+            # opts['trans_f_expand'] = 1.5
             sample_generator.set_trans_f(opts['trans_f_expand'])
 
         # Bbox regression
@@ -248,9 +280,19 @@ def run_mdnet(img_list, init_bbox, gt=None, savefig_dir='', display=False):
         # Data collect
         if success:
             # Draw pos/neg samples
+            # opts['n_pos_update'] = 50
+            # opts['n_neg_update'] = 200
+            # opts['overlap_pos_update'] = [0.7, 1]
+            # opts['overlap_neg_update'] = [0, 0.3]
+
+            # trans_f 0.1 scale_f 1.2 no aspect ratio change
+            # n 50 overlap [0.7, 1] no scale limitation
             pos_examples = gen_samples(pos_generator, target_bbox, 
                                        opts['n_pos_update'],
                                        opts['overlap_pos_update'])
+
+            # trans_f 1.5 scale_f 1.2 no aspect ratio change
+            # n 200 overlap [0, 0.3] no scale limitation
             neg_examples = gen_samples(neg_generator, target_bbox, 
                                        opts['n_neg_update'],
                                        opts['overlap_neg_update'])

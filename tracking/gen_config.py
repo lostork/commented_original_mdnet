@@ -15,6 +15,7 @@ def gen_config(args):
         img_dir = os.path.join(seq_home, seq_name, 'img')
         gt_path = os.path.join(seq_home, seq_name, 'groundtruth_rect.txt')
 
+        # print os.getcwd()
         img_list = os.listdir(img_dir)
         img_list.sort()
         img_list = [os.path.join(img_dir,x) for x in img_list]
@@ -45,4 +46,10 @@ def gen_config(args):
     else:
         savefig_dir = ''
 
+    # img_list:     list of string      list of pics path in the test sequence sorted by filename
+    #       eg '../dataset/OTB/DragonBaby/img/0001.jpg'
+    # init_bbox:    ndarray(4, )        x,y,w,h of ground truth bbox in the first img
+    #       eg [ 160.   83.   56.   65.]
+    # gt:           ndarray(n, 4)       ground truth bboxes
+    #
     return img_list, init_bbox, gt, savefig_dir, args.display, result_path

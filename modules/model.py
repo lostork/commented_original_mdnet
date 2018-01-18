@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import torch
 
+# add parameters to params dict
 def append_params(params, module, prefix):
     for child in module.children():
         for k,p in child._parameters.iteritems():
@@ -47,10 +48,12 @@ class MDNet(nn.Module):
     def __init__(self, model_path=None, K=1):
         super(MDNet, self).__init__()
         self.K = K
+        # torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)
         self.layers = nn.Sequential(OrderedDict([
                 ('conv1', nn.Sequential(nn.Conv2d(3, 96, kernel_size=7, stride=2),
                                         nn.ReLU(),
                                         LRN(),
+                                        # overlap pooling
                                         nn.MaxPool2d(kernel_size=3, stride=2))),
                 ('conv2', nn.Sequential(nn.Conv2d(96, 256, kernel_size=5, stride=2),
                                         nn.ReLU(),
@@ -58,6 +61,7 @@ class MDNet(nn.Module):
                                         nn.MaxPool2d(kernel_size=3, stride=2))),
                 ('conv3', nn.Sequential(nn.Conv2d(256, 512, kernel_size=3, stride=1),
                                         nn.ReLU())),
+            # torch.nn.Linear(in_features, out_features, bias=True)
                 ('fc4',   nn.Sequential(nn.Dropout(0.5),
                                         nn.Linear(512 * 3 * 3, 512),
                                         nn.ReLU())),
@@ -70,11 +74,13 @@ class MDNet(nn.Module):
         
         if model_path is not None:
             if os.path.splitext(model_path)[1] == '.pth':
+                # load pretrained shared layer parameters
                 self.load_model(model_path)
             elif os.path.splitext(model_path)[1] == '.mat':
                 self.load_mat_model(model_path)
             else:
                 raise RuntimeError("Unkown model format: %s" % (model_path))
+        # add all (including shared layers and branch) parameter to self.params
         self.build_param_dict()
 
     def build_param_dict(self):

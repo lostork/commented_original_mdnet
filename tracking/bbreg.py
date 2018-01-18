@@ -5,7 +5,7 @@ import numpy as np
 from utils import *
 
 class BBRegressor():
-    def __init__(self, img_size, alpha=1000, overlap=[0.6, 1], scale=[1, 2]):
+    def __init__(self, img_size, alpha=1000, overlap=[0.6, 1], scale=[1, 2]): # TODO: scale start from 1
         self.img_size = img_size
         self.alpha = alpha
         self.overlap_range = overlap
@@ -51,7 +51,7 @@ class BBRegressor():
         bbox_[idx] = bbox[idx]
  
         bbox_[:,:2] = np.maximum(bbox_[:,:2], 0)
-        bbox_[:,2:] = np.minimum(bbox_[:,2:], self.img_size - bbox[:,:2])
+        bbox_[:,2:] = np.minimum(bbox_[:,2:], self.img_size - bbox[:,:2]) # TODO: NUSTD
 
         return bbox_
     
