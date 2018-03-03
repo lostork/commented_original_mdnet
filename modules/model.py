@@ -10,8 +10,13 @@ import torch
 
 # add parameters to params dict
 def append_params(params, module, prefix):
+    # module : nn.Sequential(...)
+    # prefix : 'conv1'
     for child in module.children():
+        # child = conv2d(3,96,...)
         for k,p in child._parameters.iteritems():
+            # k : 'weight', 'bias'.
+            # p : Parameter.
             if p is None: continue
             
             if isinstance(child, nn.BatchNorm2d):
@@ -86,6 +91,8 @@ class MDNet(nn.Module):
     def build_param_dict(self):
         self.params = OrderedDict()
         for name, module in self.layers.named_children():
+            # name = 'conv1'
+            # module = nn.Sequential
             append_params(self.params, module, name)
         for k, module in enumerate(self.branches):
             append_params(self.params, module, 'fc6_%d'%(k))
@@ -168,7 +175,9 @@ class Accuracy():
 
 class Precision():
     def __call__(self, pos_score, neg_score):
-        
+
+        # take the topk scores and check if they are belong to pos_score,
+        # #(belongs) / #(num of pos_score) = precision
         scores = torch.cat((pos_score[:,1], neg_score[:,1]), 0)
         topk = torch.topk(scores, pos_score.size(0))[1]
         prec = (topk < pos_score.size(0)).float().sum() / (pos_score.size(0)+1e-8)
